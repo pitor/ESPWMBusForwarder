@@ -24,6 +24,10 @@
 #include "WaterMeter.h"
 //#include "config.h"
 
+#if defined(ESP32)
+  #define LED_BUILTIN 2
+#endif
+
 CREDENTIAL currentWifi; // global to store found wifi
 
 uint8_t wifiConnectCounter = 0; // count retries
