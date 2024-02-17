@@ -12,40 +12,34 @@
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "WaterMeter.h"
+#include "CC1101Receiver.h"
 
-WaterMeter::WaterMeter(PubSubClient &mqtt)
-  : mqttClient  (mqtt)
-  , mqttEnabled (false)
+CC1101Receiver::CC1101Receiver()
 {
 }
 
-void WaterMeter::enableMqtt(bool enabled)
-{
-  mqttEnabled = enabled;
-}
 
 // ChipSelect assert
-inline void WaterMeter::selectCC1101(void)
+inline void CC1101Receiver::selectCC1101(void)
 {
   digitalWrite(SS, LOW);
 }
 
 // ChipSelect deassert
-inline void WaterMeter::deselectCC1101(void)
+inline void CC1101Receiver::deselectCC1101(void)
 {
   digitalWrite(SS, HIGH);
 }
 
 // wait for MISO pulling down
-inline void WaterMeter::waitMiso(void)
+inline void CC1101Receiver::waitMiso(void)
 {
   while (digitalRead(MISO) == HIGH)
     ;
 }
 
 // write a single register of CC1101
-void WaterMeter::writeReg(uint8_t regAddr, uint8_t value)
+void CC1101Receiver::writeReg(uint8_t regAddr, uint8_t value)
 {
   selectCC1101();
   waitMiso();            // Wait until MISO goes low
@@ -55,7 +49,7 @@ void WaterMeter::writeReg(uint8_t regAddr, uint8_t value)
 }
 
 // send a strobe command to CC1101
-void WaterMeter::cmdStrobe(uint8_t cmd)
+void CC1101Receiver::cmdStrobe(uint8_t cmd)
 {
   selectCC1101();
   delayMicroseconds(5);
@@ -66,7 +60,7 @@ void WaterMeter::cmdStrobe(uint8_t cmd)
 }
 
 // read CC1101 register (status or configuration)
-uint8_t WaterMeter::readReg(uint8_t regAddr, uint8_t regType)
+uint8_t CC1101Receiver::readReg(uint8_t regAddr, uint8_t regType)
 {
   uint8_t addr, val;
 
@@ -81,7 +75,7 @@ uint8_t WaterMeter::readReg(uint8_t regAddr, uint8_t regType)
 }
 
 //
-void WaterMeter::readBurstReg(uint8_t *buffer, uint8_t regAddr, uint8_t len)
+void CC1101Receiver::readBurstReg(uint8_t *buffer, uint8_t regAddr, uint8_t len)
 {
   uint8_t addr, i;
 
@@ -97,7 +91,7 @@ void WaterMeter::readBurstReg(uint8_t *buffer, uint8_t regAddr, uint8_t len)
 }
 
 // power on reset
-void WaterMeter::reset(void)
+void CC1101Receiver::reset(void)
 {
   deselectCC1101();
   delayMicroseconds(3);
@@ -120,7 +114,7 @@ void WaterMeter::reset(void)
 }
 
 // set IDLE state, flush FIFO and (re)start receiver
-void WaterMeter::startReceiver(void)
+void CC1101Receiver::startReceiver(void)
 {
   uint8_t regCount = 0;
   cmdStrobe(CC1101_SIDLE); // Enter IDLE state
@@ -150,7 +144,7 @@ void WaterMeter::startReceiver(void)
 }
 
 // initialize all the CC1101 registers
-void WaterMeter::initializeRegisters(void)
+void CC1101Receiver::initializeRegisters(void)
 {
   writeReg(CC1101_IOCFG2, CC1101_DEFVAL_IOCFG2);
   writeReg(CC1101_IOCFG0, CC1101_DEFVAL_IOCFG0);
@@ -192,22 +186,22 @@ void WaterMeter::initializeRegisters(void)
   writeReg(CC1101_TEST0, CC1101_DEFVAL_TEST0);
 }
 
-IRAM_ATTR void WaterMeter::instanceCC1101Isr()
+IRAM_ATTR void CC1101Receiver::instanceCC1101Isr()
 {
   // set the flag that a package is available
   packetAvailable = true;
 }
 
 // static ISR method, that calls the right instance
-IRAM_ATTR void WaterMeter::cc1101Isr(void *p)
+IRAM_ATTR void CC1101Receiver::cc1101Isr(void *p)
 {
-  WaterMeter *ptr = (WaterMeter *)p;
+  CC1101Receiver *ptr = (CC1101Receiver *)p;
   ptr->instanceCC1101Isr();
 }
 
 // should be called frequently, handles the ISR flag
 // does the frame checkin and decryption
-void WaterMeter::loop(void)
+void CC1101Receiver::loop(void)
 {
   if (packetAvailable)
   {
@@ -231,23 +225,18 @@ void WaterMeter::loop(void)
 }
 
 // Initialize CC1101 to receive WMBus MODE C1
-void WaterMeter::begin(uint8_t *key, uint8_t *id)
+void CC1101Receiver::begin()
 {
   pinMode(SS, OUTPUT);         // SS Pin -> Output
   SPI.begin();                 // Initialize SPI interface
   pinMode(CC1101_GDO0, INPUT); // Config GDO0 as input
-
-  memcpy(aesKey, key, sizeof(aesKey));
-  aes128.setKey(aesKey, sizeof(aesKey));
-
-  memcpy(meterId, id, sizeof(meterId));
 
   restartRadio();
   attachInterruptArg(digitalPinToInterrupt(CC1101_GDO0), cc1101Isr, this, FALLING);
   lastFrameReceived = millis();
 }
 
-void WaterMeter::restartRadio()
+void CC1101Receiver::restartRadio()
 {
   Serial.println("resetting CC1101");
 
@@ -263,7 +252,7 @@ void WaterMeter::restartRadio()
   lastFrameReceived = millis();
 }
 
-bool WaterMeter::checkFrame(void)
+bool CC1101Receiver::checkFrame(void)
 {
 #if DEBUG
   Serial.printf("frame serial ID: ");
@@ -275,17 +264,6 @@ bool WaterMeter::checkFrame(void)
   Serial.println();
 #endif
 
-  // check meterId
-  for (uint8_t i = 0; i < 4; i++)
-  {
-    if (meterId[i] != payload[7 - i])
-    {
-#if DEBUG
-      Serial.println("Meter serial doesnt match!");
-#endif
-      return false;
-    }
-  }
 
 #if DEBUG
   Serial.println("Frame payload:");
@@ -307,7 +285,7 @@ bool WaterMeter::checkFrame(void)
   return true;
 }
 
-void WaterMeter::getMeterInfo(uint8_t *data, size_t len)
+void CC1101Receiver::getMeterInfo(uint8_t *data, size_t len)
 {
   // init positions for compact frame
   int pos_tt = 9;  // total consumption
@@ -335,55 +313,21 @@ void WaterMeter::getMeterInfo(uint8_t *data, size_t len)
   infoCodes = data[pos_ic];
 }
 
-void WaterMeter::publishMeterInfo()
-{
-  char total[12];
-  snprintf(total, sizeof(total), "%d.%03d", totalWater/ 1000, totalWater % 1000);
-  Serial.printf("total: %s m%c - ", total, 179);
-
-  char target[12];
-  snprintf(target, sizeof(target), "%d.%03d", targetWater / 1000, targetWater % 1000);
-  Serial.printf("target: %s m%c - ", target, 179);
-
-  char flow_temp[4];
-  snprintf(flow_temp, sizeof(flow_temp), "%2d", flowTemp);
-  Serial.printf("%s %cC - ", flow_temp, 176);
-
-  char ambient_temp[4];
-  snprintf(ambient_temp, sizeof(ambient_temp), "%2d", ambientTemp);
-  Serial.printf("%s %cC - ", ambient_temp, 176);
-
-  char info_codes[3];
-  snprintf(info_codes, sizeof(info_codes), "%02x", infoCodes);
-  Serial.printf("0x%s \n\r", info_codes);
-
-  if (!mqttEnabled) return; // no MQTT broker connected, leave
-
-  // change the topics as you like
-  mqttClient.publish(MQTT_PREFIX MQTT_total, total);
-  mqttClient.publish(MQTT_PREFIX MQTT_target, target);
-  mqttClient.loop();
-  mqttClient.publish(MQTT_PREFIX MQTT_ftemp, flow_temp);
-  mqttClient.publish(MQTT_PREFIX MQTT_atemp, ambient_temp);
-  mqttClient.publish(MQTT_PREFIX MQTT_info, info_codes);
-  mqttClient.loop();
-}
-
 // reads a single byte from the RX fifo
-uint8_t WaterMeter::readByteFromFifo(void)
+uint8_t CC1101Receiver::readByteFromFifo(void)
 {
   return readReg(CC1101_RXFIFO, CC1101_CONFIG_REGISTER);
 }
 
 // handles a received frame and restart the CC1101 receiver
-void WaterMeter::receive()
+void CC1101Receiver::receive()
 {
   // read preamble, should be 0x543D
   uint8_t p1 = readByteFromFifo();
   uint8_t p2 = readByteFromFifo();
   
 #if DEBUG
-  Serial.printf("%02x%02x", p1, p2);
+  Serial.printf("PREAMBLE %02x%02x\n", p1, p2);
 #endif
 
   // get length
@@ -444,7 +388,6 @@ void WaterMeter::receive()
 
       lastFrameReceived = millis();
       getMeterInfo(plaintext, cipherLength);
-      publishMeterInfo();
     }
   }
 

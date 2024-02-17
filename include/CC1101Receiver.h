@@ -12,15 +12,14 @@
  along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef _WATERMETER_H_
-#define _WATERMETER_H_
+#ifndef _CC1101RECEIVER_H_
+#define _CC1101RECEIVER_H_
 
 #include <Arduino.h>
 #include <SPI.h>
 #include <Crypto.h>
 #include <AES.h>
 #include <CTR.h>
-#include <PubSubClient.h>
 #include "config.h"
 #include "utils.h"
 
@@ -181,7 +180,7 @@
 #define CC1101_DEFVAL_PKTLEN     0x30        // Packet Length
 #define CC1101_DEFVAL_FIFOTHR    0x00        // RX 4 bytes and TX 61 bytes Thresholds
 
-class WaterMeter
+class CC1101Receiver
 {
   private:
     const uint32_t RECEIVE_TIMEOUT = 300000UL;  // in millis
@@ -189,8 +188,6 @@ class WaterMeter
     uint32_t lastPacketDecoded = -PACKET_TIMEOUT;
     uint32_t lastFrameReceived = 0;
     volatile boolean packetAvailable = false;
-    uint8_t meterId[4];
-    uint8_t aesKey[16];
     inline void selectCC1101(void);
     inline void deselectCC1101(void);
     inline void waitMiso(void);
@@ -209,8 +206,6 @@ class WaterMeter
     uint8_t ambientTemp;
     uint8_t infoCodes;
 
-    PubSubClient &mqttClient;
-    bool mqttEnabled;
 
  // reset HW and restart receiver
     void restartRadio(void);
@@ -234,17 +229,15 @@ class WaterMeter
     void receive(void); // read frame from CC1101
     bool checkFrame(void);  // check id, CRC
     void getMeterInfo(uint8_t *data, size_t len);
-    void publishMeterInfo();
     
   public:
 
     // constructor
-    WaterMeter(PubSubClient &mqtt);
-    
-    void enableMqtt(bool enable);
+    CC1101Receiver();
+  
 
     // startup CC1101 for receiving wmbus mode c 
-    void begin(uint8_t *key, uint8_t *id);
+    void begin();
 
     // must be called frequently
     void loop(void);
@@ -252,4 +245,4 @@ class WaterMeter
     IRAM_ATTR void instanceCC1101Isr();
 };
 
-#endif // _WATERMETER_H_
+#endif // _CC1101RECEIVER_H_

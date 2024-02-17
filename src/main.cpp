@@ -21,7 +21,7 @@
 #endif
 #include <PubSubClient.h>
 #include <ArduinoOTA.h>
-#include "WaterMeter.h"
+#include "CC1101Receiver.h"
 //#include "config.h"
 
 #if defined(ESP32)
@@ -34,7 +34,7 @@ uint8_t wifiConnectCounter = 0; // count retries
 
 WiFiClient espMqttClient;
 PubSubClient mqttClient(espMqttClient);
-WaterMeter waterMeter(mqttClient);
+CC1101Receiver cc1101Receiver = CC1101Receiver();
 
 char MyIp[16];
 int cred = -1;
@@ -262,7 +262,7 @@ void setup()
     uint8_t key[16] = { ENCRYPTION_KEY }; // AES-128 key
     uint8_t id[4] = { SERIAL_NUMBER }; // Multical21 serial number
 
-    waterMeter.begin(key, id);
+    cc1101Receiver.begin();
     Serial.println("Setup done...");
 }
 
@@ -346,7 +346,6 @@ void loop()
       Serial.println("StateMqttConnect:");
       digitalWrite(LED_BUILTIN, HIGH); // off
 
-      waterMeter.enableMqtt(false);
 
       if (WiFi.status() != WL_CONNECTED)
       {
@@ -359,7 +358,6 @@ void loop()
         if (mqttConnect())
         {
           ControlState = StateConnected;
-          waterMeter.enableMqtt(true);
         }
         else
         {
@@ -428,7 +426,7 @@ void loop()
       }
 
       // here we go
-      waterMeter.loop();
+      cc1101Receiver.loop();
 
       ArduinoOTA.handle();
 
@@ -436,7 +434,7 @@ void loop()
 
     case StateOperatingNoWifi:
 
-      waterMeter.loop();
+      cc1101Receiver.loop();
       break;
 
     default:
