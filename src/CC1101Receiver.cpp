@@ -201,8 +201,11 @@ IRAM_ATTR void CC1101Receiver::cc1101Isr(void *p)
 
 // should be called frequently, handles the ISR flag
 // does the frame checkin and decryption
-void CC1101Receiver::loop(void)
+bool CC1101Receiver::loop(WMBusPacket* packet)
 {
+
+  bool packetReceived = false;
+
   if (packetAvailable)
   {
     // Serial.println("packet received");
@@ -211,7 +214,8 @@ void CC1101Receiver::loop(void)
 
     // clear the flag
     packetAvailable = false;
-    receive();
+
+    packetReceived = receive(packet);
 
     // Enable wireless reception interrupt
     attachInterruptArg(digitalPinToInterrupt(CC1101_GDO0), cc1101Isr, this, FALLING);
@@ -219,9 +223,12 @@ void CC1101Receiver::loop(void)
 
   if (millis() - lastFrameReceived > RECEIVE_TIMEOUT)
   {
+    Serial.println("CC1101Receiver: no frame received for a long time, restarting radio");
     // workaround: reset CC1101, since it stops receiving from time to time
     restartRadio();
   }
+
+  return packetReceived;
 }
 
 // Initialize CC1101 to receive WMBus MODE C1
@@ -252,66 +259,6 @@ void CC1101Receiver::restartRadio()
   lastFrameReceived = millis();
 }
 
-bool CC1101Receiver::checkFrame(void)
-{
-#if DEBUG
-  Serial.printf("frame serial ID: ");
-  for (uint8_t i = 0; i < 4; i++)
-  {
-    Serial.printf("%02x", payload[7-i]);
-  }
-  Serial.printf(" - %d", length);
-  Serial.println();
-#endif
-
-
-#if DEBUG
-  Serial.println("Frame payload:");
-  for (uint8_t i = 0; i <= length; i++)
-  {
-    Serial.printf("%02x", payload[i]);
-  }
-  Serial.println();
-#endif
-
-  uint16_t crc = crcEN13575(payload, length - 1); // -2 (CRC) + 1 (L-field)
-  if (crc != (payload[length - 1] << 8 | payload[length]))
-  {
-    Serial.println("CRC Error");
-    Serial.printf("%04x - %02x%02x\n", crc, payload[length - 1], payload[length]);
-    return false;
-  }
-
-  return true;
-}
-
-void CC1101Receiver::getMeterInfo(uint8_t *data, size_t len)
-{
-  // init positions for compact frame
-  int pos_tt = 9;  // total consumption
-  int pos_tg = 13; // target consumption
-  int pos_ic = 7;  // info codes
-  int pos_ft = 17; // flow temp
-  int pos_at = 18; // ambient temp
-
-  if (data[2] == 0x78) // long frame
-  {
-    // overwrite it with long frame positions
-    pos_tt = 10;
-    pos_tg = 16;
-    pos_ic = 6;
-    pos_ft = 22;
-    pos_at = 25;
-  }
-
-  totalWater = data[pos_tt] + (data[pos_tt + 1] << 8) + (data[pos_tt + 2] << 16) + (data[pos_tt + 3] << 24);
-
-  targetWater = data[pos_tg] + (data[pos_tg + 1] << 8) + (data[pos_tg + 2] << 16) + (data[pos_tg + 3] << 24);
-
-  flowTemp = data[pos_ft];
-  ambientTemp = data[pos_at];
-  infoCodes = data[pos_ic];
-}
 
 // reads a single byte from the RX fifo
 uint8_t CC1101Receiver::readByteFromFifo(void)
@@ -320,78 +267,52 @@ uint8_t CC1101Receiver::readByteFromFifo(void)
 }
 
 // handles a received frame and restart the CC1101 receiver
-void CC1101Receiver::receive()
+int16_t CC1101Receiver::receive(WMBusPacket *packet)
 {
   // read preamble, should be 0x543D
   uint8_t p1 = readByteFromFifo();
   uint8_t p2 = readByteFromFifo();
+  bool frameOk = false;
   
 #if DEBUG
   Serial.printf("PREAMBLE %02x%02x\n", p1, p2);
 #endif
+    uint16_t bufferIx = 0;
 
-  // get length
-  payload[0] = readByteFromFifo();
-
+    packet->preAmble = p1 << 8 | p2;
+ 
   // is it Mode C1, frame B and does it fit in the buffer
-  if ((payload[0] < MAX_LENGTH) && (p1 == 0x54) && (p2 == 0x3D))
+  if ( packet->preAmble == WMBUS_FRAME_B_PREAMBLE)
   {
-    // 3rd byte is payload length
-    length = payload[0];
+    length = readByteFromFifo();
 
-#if DEBUG
-    Serial.printf("%02X", length);
-#endif
+    packet->payload[bufferIx++] = length;
 
     // starting with 1! index 0 is lfield
     for (int i = 0; i < length; i++)
     {
-      payload[i + 1] = readByteFromFifo();
+      packet->payload[bufferIx++] = readByteFromFifo();
     }
 
-    // check meterId, CRC
-    if (checkFrame())
+    lastFrameReceived = millis();
+
+    // check meterId, CRC. Skip the preamble bytes.
+    if (packet->checkCRC() == true)
     {
-      uint8_t cipherLength = length - 2 - 16; // cipher starts at index 16, remove 2 crc bytes
-      memcpy(cipher, &payload[17], cipherLength);
-
-      memset(iv, 0, sizeof(iv)); // padding with 0
-      memcpy(iv, &payload[2], 8);
-      iv[8] = payload[11];
-      memcpy(&iv[9], &payload[13], 4);
-
-#if DEBUG
-      printHex(iv, sizeof(iv));
-      printHex(cipher, cipherLength);
-#endif
-
-      aes128.setIV(iv, sizeof(iv));
-      aes128.decrypt(plaintext, (const uint8_t *)cipher, cipherLength);
-
-      /*
-        Serial.printf("C:     ");
-        for (size_t i = 0; i < cipherLength; i++)
-        {
-          Serial.printf("%02X", cipher[i]);
-        }
-        Serial.println();
-        Serial.printf("P(%d): ", cipherLength);
-        for (size_t i = 0; i < cipherLength; i++)
-        {
-          Serial.printf("%02X", plaintext[i]);
-        }
-        Serial.println();
-      */
-
-      // received packet is ok
-      lastPacketDecoded = millis();
-
-      lastFrameReceived = millis();
-      getMeterInfo(plaintext, cipherLength);
+      frameOk = true;
     }
+    else
+    {
+      return -1;
+    }
+    // received packet is ok
+    lastPacketDecoded = millis();
+    return bufferIx;
   }
 
   // flush RX fifo and restart receiver
   startReceiver();
   // Serial.printf("rxStatus: 0x%02x\n\r", readStatusReg(CC1101_RXBYTES));
+
+  return frameOk;
 }

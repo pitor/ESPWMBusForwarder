@@ -28,7 +28,7 @@
   #define LED_BUILTIN 2
 #endif
 
-CREDENTIAL currentWifi; // global to store found wifi
+CredentialStruct currentWifi; // global to store found wifi
 
 uint8_t wifiConnectCounter = 0; // count retries
 
@@ -69,7 +69,7 @@ bool ConnectWifi(void)
   }
 
   // search for given credentials
-  for (CREDENTIAL credential : credentials)
+  for (CredentialStruct credential : credentials)
   {
     for (int j = 0; j < numSsid; ++j)
     {
@@ -259,9 +259,6 @@ void setup()
 
     Serial.begin(115200);
 
-    uint8_t key[16] = { ENCRYPTION_KEY }; // AES-128 key
-    uint8_t id[4] = { SERIAL_NUMBER }; // Multical21 serial number
-
     cc1101Receiver.begin();
     Serial.println("Setup done...");
 }
@@ -279,6 +276,8 @@ ControlStateType ControlState = StateInit;
 
 void loop()
 {
+  WMBusPacket packet;
+
   switch (ControlState)
   {
     case StateInit:
@@ -425,8 +424,7 @@ void loop()
         mqttClient.loop();
       }
 
-      // here we go
-      cc1101Receiver.loop();
+      cc1101Receiver.loop(&packet);
 
       ArduinoOTA.handle();
 
@@ -434,7 +432,7 @@ void loop()
 
     case StateOperatingNoWifi:
 
-      cc1101Receiver.loop();
+      cc1101Receiver.loop(&packet);
       break;
 
     default:

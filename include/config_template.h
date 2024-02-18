@@ -5,22 +5,14 @@
 
 #define DEBUG 1 // set to 1 for detailed logging at UART
 #define ESP_NAME "esp-multical21"   // for dns resolving
-#define MQTT_PREFIX "watermeter/0"  // mqtt prefix topic
-#define MQTT_total "/total"
-#define MQTT_target "/target"
-#define MQTT_ftemp "/flowtemp"
-#define MQTT_atemp "/ambienttemp"
-#define MQTT_info "/infocode"
+#define MQTT_TOPIC "forwarder/0"  // mqtt prefix topic
 
-// ask your water supplier for your personal encryption key 
-#define ENCRYPTION_KEY      0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF
-// serial number is printed on your multical21
-#define SERIAL_NUMBER       0x12, 0x34, 0x56, 0x78
+
 
 // WIFI configuration, supports more than one WIFI, first found first served
 // if you dont use MQTT, leave broker/user/pass empty ("")
 // if you dont need user/pass for MQTT, leave it empty ("")
-struct CREDENTIAL {
+struct CredentialStruct {
     char const* ssid;           // Wifi ssid
     char const* password;	      // Wifi password
     char const* mqtt_broker;		// MQTT broker ip address
@@ -30,7 +22,7 @@ struct CREDENTIAL {
 
 // more than one wifi credentials are supported, upper one wins
 // "ssid", "wifi_passphrase", "mqtt_broker", "mqtt_username", "mqtt_password"
-std::vector<CREDENTIAL> const credentials = {
+std::vector<CredentialStruct> const credentials = {
      { "ssid1", "********", "", "", ""}   // no MQTT
    , { "ssid2", "********", "10.14.0.1", "", ""} // MQTT without auth
    , { "ssid3", "********", "10.0.0.111", "mqttuser", "********"}  // MQTT with auth
